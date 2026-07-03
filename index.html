@@ -399,21 +399,15 @@ body {
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 /* ======================================================================
-   CONFIGURAÇÃO — preencher com os dados reais antes do deploy
+   CONFIGURAÇÃO
+   Toda a lógica sensível (Supabase + RD Station) roda na Edge Function.
+   Aqui só precisamos da URL pública dela.
    ====================================================================== */
 var CONFIG = {
-  SUPABASE_URL: 'COLE_AQUI_SUA_SUPABASE_URL',        // ex: https://xxxxx.supabase.co
-  SUPABASE_ANON_KEY: 'COLE_AQUI_SUA_ANON_KEY',        // chave publica (anon), NUNCA a service_role
-  RD_STATION_API_KEY: 'COLE_AQUI_SEU_TOKEN_PUBLICO_RD',// token publico de conversao do RD Station
-  RD_STATION_CONVERSION_IDENTIFIER: 'formulario-ebook-albert', // identificador do evento no RD
-  RD_STATION_TAG: 'app_prospector'
+  EDGE_FUNCTION_URL: 'https://rbbnnumspxcyihbytxdd.supabase.co/functions/v1/submit-lead'
 };
-
-var supabaseClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
-
 /* ====================================================================== */
 
 var answers = { fat: null, seg: null, nome: null, comoTentaHoje: null, faturamentoLabel: null };
@@ -511,45 +505,24 @@ async function submitForm() {
   setLoading(true);
 
   try {
-    // 1) Salva no Supabase
-    var { error: supaError } = await supabaseClient.from('leads').insert([{
-      nome: nome,
-      whatsapp: wpp,
-      email: email,
-      instagram: ig || null,
-      faturamento: answers.fat,
-      segmento: answers.seg,
-      como_tenta_hoje: answers.comoTentaHoje
-    }]);
-
-    if (supaError) throw new Error('Supabase: ' + supaError.message);
-
-    // 2) Envia para o RD Station (Evento de Conversão) com a tag app_prospector
-    var rdPayload = {
-      event_type: 'CONVERSION',
-      event_family: 'CDP',
-      payload: {
-        conversion_identifier: CONFIG.RD_STATION_CONVERSION_IDENTIFIER,
-        name: nome,
-        email: email,
-        mobile_phone: wpp,
-        tags: [CONFIG.RD_STATION_TAG],
-        cf_instagram: ig || undefined,
-        cf_faturamento: answers.faturamentoLabel || undefined,
-        cf_segmento: answers.seg || undefined,
-        cf_como_tenta_hoje: answers.comoTentaHoje || undefined
-      }
-    };
-
-    var rdResponse = await fetch('https://api.rd.services/platform/conversions?api_key=' + CONFIG.RD_STATION_API_KEY, {
+    var response = await fetch(CONFIG.EDGE_FUNCTION_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(rdPayload)
+      body: JSON.stringify({
+        nome: nome,
+        whatsapp: wpp,
+        email: email,
+        instagram: ig || null,
+        faturamento: answers.fat,
+        faturamentoLabel: answers.faturamentoLabel,
+        segmento: answers.seg,
+        comoTentaHoje: answers.comoTentaHoje
+      })
     });
 
-    if (!rdResponse.ok) {
-      // Não bloqueia o usuário se o RD falhar — o lead já está salvo no Supabase.
-      console.error('Falha ao enviar para o RD Station:', await rdResponse.text());
+    if (!response.ok) {
+      var errBody = await response.json().catch(function () { return {}; });
+      throw new Error(errBody.error || 'Falha ao enviar formulário');
     }
 
     setLoading(false);
