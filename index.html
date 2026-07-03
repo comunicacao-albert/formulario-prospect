@@ -161,6 +161,9 @@ body {
 .field-input:focus { border-color: var(--mag); }
 .field-input::placeholder { color: var(--hint); }
 .field-hint { font-size: 11px; color: var(--hint); line-height: 1.5; }
+.field-error { font-size: 11px; color: #A32D2D; line-height: 1.5; display: none; }
+.field-error.show { display: block; }
+.field-input.invalid { border-color: #A32D2D; }
 
 .privacy-note {
   display: flex; gap: 8px; align-items: flex-start;
@@ -356,11 +359,13 @@ body {
         </div>
         <div class="field-group">
           <label class="field-label">WhatsApp (o seu melhor número para te encontrarmos)</label>
-          <input class="field-input" type="tel" id="f-wpp" placeholder="(11) 99999-9999" oninput="checkForm()">
+          <input class="field-input" type="tel" id="f-wpp" placeholder="(11) 99999-9999" inputmode="numeric" oninput="onWppInput(this); checkForm()">
+          <span class="field-error" id="err-wpp"></span>
         </div>
         <div class="field-group">
           <label class="field-label">E-mail</label>
           <input class="field-input" type="email" id="f-email" placeholder="seu@email.com" oninput="checkForm()">
+          <span class="field-error" id="err-email"></span>
         </div>
         <div class="field-group">
           <label class="field-label">@ do Instagram da sua loja</label>
@@ -446,12 +451,49 @@ function selectFat(el, type, label) {
   document.getElementById('btn2').disabled = false;
 }
 
+function onWppInput(el) {
+  var digitsOnly = el.value.replace(/\D/g, '');
+  if (digitsOnly.length > 11) digitsOnly = digitsOnly.slice(0, 11);
+  el.value = digitsOnly;
+}
+
+function isValidEmail(value) {
+  // Validação de formato de e-mail (nome@dominio.tld)
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
+}
+
+function isValidWpp(value) {
+  // Aceita apenas números, com DDD + número (10 ou 11 dígitos)
+  return /^\d{10,11}$/.test(value);
+}
+
 function checkForm() {
   var nome  = document.getElementById('f-nome').value.trim();
   var wpp   = document.getElementById('f-wpp').value.trim();
   var email = document.getElementById('f-email').value.trim();
+
   answers.nome = nome;
-  document.getElementById('btn4').disabled = !(nome && wpp && email);
+
+  var wppEl = document.getElementById('f-wpp');
+  var emailEl = document.getElementById('f-email');
+  var wppErr = document.getElementById('err-wpp');
+  var emailErr = document.getElementById('err-email');
+
+  var wppOk = wpp === '' || isValidWpp(wpp);
+  var emailOk = email === '' || isValidEmail(email);
+
+  wppEl.classList.toggle('invalid', wpp !== '' && !wppOk);
+  wppErr.textContent = 'Informe DDD + número (somente dígitos, ex: 11999999999)';
+  wppErr.classList.toggle('show', wpp !== '' && !wppOk);
+
+  emailEl.classList.toggle('invalid', email !== '' && !emailOk);
+  emailErr.textContent = 'Informe um e-mail válido (ex: nome@empresa.com)';
+  emailErr.classList.toggle('show', email !== '' && !emailOk);
+
+  var allFilled = nome && wpp && email;
+  var allValid = isValidWpp(wpp) && isValidEmail(email);
+
+  document.getElementById('btn4').disabled = !(allFilled && allValid);
 }
 
 function nextScreen(to) {
@@ -501,6 +543,12 @@ async function submitForm() {
   var wpp   = document.getElementById('f-wpp').value.trim();
   var email = document.getElementById('f-email').value.trim();
   var ig    = document.getElementById('f-ig').value.trim();
+
+  if (!isValidWpp(wpp) || !isValidEmail(email)) {
+    checkForm();
+    showError('Confira o telefone (somente números com DDD) e o e-mail antes de continuar.');
+    return;
+  }
 
   setLoading(true);
 
